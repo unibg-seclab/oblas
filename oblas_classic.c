@@ -97,3 +97,54 @@ void ogemm(uint8_t *restrict a, uint8_t *restrict b, uint8_t *restrict c,
     }
   }
 }
+
+void crsrow_swapcol(crsrow *a, uint16_t i, uint16_t j) {
+  uint8_t tmp;
+  int ix = crsrow_find(a->idxs, 0, a->nz - 1, i);
+  int jx = crsrow_find(a->idxs, 0, a->nz - 1, j);
+
+  if (ix < 0 && jx < 0) {
+    return;
+  } else if (ix < 0) {
+    ix = a->nz;
+    crsrow_resize(a, a->nz + 1);
+    tmp = a->vals[jx];
+    a->vals[jx] = 0;
+    a->vals[ix] = tmp;
+  } else if (jx < 0) {
+    jx = a->nz;
+    crsrow_resize(a, a->nz + 1);
+    tmp = a->vals[ix];
+    a->vals[ix] = 0;
+    a->vals[jx] = tmp;
+  } else {
+    /* have both */
+    tmp = a->vals[ix];
+    a->vals[ix] = a->vals[jx];
+    a->vals[jx] = tmp;
+  }
+}
+
+void crsrow_add(crsrow *a, crsrow *b) {
+}
+
+void crsrow_axpy(crsrow *a, crsrow *b, uint8_t u) {
+  if (u == 0)
+    return;
+
+  octet a_dense[a->nz_al];
+  memset(a_dense, 0, a->nz_al);
+
+  crsrow_unpack(a, a_dense);
+
+  const octet *urow_hi = OCT_MUL_HI[u];
+  const octet *urow_lo = OCT_MUL_LO[u];
+  for (int idx = 0; idx < b->nz; idx++) {
+    octet b_lo = b->vals[idx] & 0x0f;
+    octet b_hi = (b->vals[idx] & 0xf0) >> 4;
+    a_dense[b->idxs[idx]] ^= urow_hi[b_hi] ^ urow_lo[b_lo];
+  }
+
+  crsrow_pack(a, a_dense, a->nz);
+}
+
