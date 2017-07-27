@@ -125,15 +125,26 @@ void crsrow_swapcol(crsrow *a, uint16_t i, uint16_t j) {
   }
 }
 
-void crsrow_add(crsrow *a, crsrow *b) {
+void crsrow_add(crsrow *a, crsrow *b, uint16_t k) {
+
+  octet a_dense[k];
+  memset(a_dense, 0, k);
+
+  crsrow_unpack(a, a_dense);
+
+  for (int idx = 0; idx < b->nz; idx++) {
+    a_dense[b->idxs[idx]] ^= b->vals[idx];
+  }
+
+  crsrow_pack(a, a_dense, a->nz);
 }
 
-void crsrow_axpy(crsrow *a, crsrow *b, uint8_t u) {
+void crsrow_axpy(crsrow *a, crsrow *b, uint8_t u, uint16_t k) {
   if (u == 0)
     return;
 
-  octet a_dense[a->nz_al];
-  memset(a_dense, 0, a->nz_al);
+  octet a_dense[k];
+  memset(a_dense, 0, k);
 
   crsrow_unpack(a, a_dense);
 
@@ -147,4 +158,3 @@ void crsrow_axpy(crsrow *a, crsrow *b, uint8_t u) {
 
   crsrow_pack(a, a_dense, a->nz);
 }
-

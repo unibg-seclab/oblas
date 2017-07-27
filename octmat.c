@@ -1,9 +1,26 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "oblas.h"
 #include "octmat.h"
+
+void *aligned_realloc(void *ptr, size_t old_size, size_t new_size) {
+  void *aligned = NULL;
+  if (new_size > old_size) {
+    if (posix_memalign(&aligned, OCTMAT_ALIGN, new_size != 0))
+      exit(ENOMEM);
+    memset(aligned, 0, new_size);
+    if (old_size > 0 && ptr != NULL) {
+      memcpy(aligned, ptr, old_size);
+      free(ptr);
+    }
+  } else {
+    aligned = ptr;
+  }
+  return aligned;
+}
 
 void om_resize(octmat *v, uint16_t r, uint16_t c) {
   v->rows = r;
@@ -53,7 +70,7 @@ void om_print(FILE *stream, octmat m) {
 }
 
 int crsrow_find(uint16_t *a, int L, int R, uint16_t x) {
-  size_t idx;
+  int idx;
   while (L <= R) {
     idx = (L + R) / 2;
     if (a[idx] == x)
@@ -66,25 +83,26 @@ int crsrow_find(uint16_t *a, int L, int R, uint16_t x) {
   return -1;
 }
 
+int crsrow_scan(uint16_t *a, int L, int R, uint16_t x) {
+  for (uint16_t idx = L; idx <= R; idx++) {
+    if (a[idx] == x) {
+      return idx;
+    }
+  }
+  return -1;
+}
+
 uint16_t crsrow_resize(crsrow *a, uint16_t nz) {
   if (a->nz_al < nz) {
-    a->nz_al = (nz / OCTMAT_ALIGN + ((nz % OCTMAT_ALIGN) ? 1 : 0)) * OCTMAT_ALIGN;
+    uint16_t nz_al =
+        (nz / OCTMAT_ALIGN + ((nz % OCTMAT_ALIGN) ? 1 : 0)) * OCTMAT_ALIGN;
 
-    if (1) {
-      void *aligned = NULL;
-      if (posix_memalign(&aligned, OCTMAT_ALIGN, sizeof(uint16_t) * a->nz_al) != 0)
-        exit(ENOMEM);
-      ozero(aligned, 0, sizeof(uint16_t) * a->nz_al);
-      a->idxs = (uint16_t *)aligned;
-    }
+    a->idxs = aligned_realloc(a->idxs, sizeof(uint16_t) * a->nz_al,
+                              sizeof(uint16_t) * nz_al);
+    a->vals = aligned_realloc(a->vals, sizeof(uint8_t) * a->nz_al,
+                              sizeof(uint8_t) * nz_al);
 
-    if (1) {
-      void *aligned = NULL;
-      if (posix_memalign(&aligned, OCTMAT_ALIGN, a->nz_al) != 0)
-        exit(ENOMEM);
-      ozero(aligned, 0, a->nz_al);
-      a->vals = (uint8_t *)aligned;
-    }
+    a->nz_al = nz_al;
   }
   a->nz = nz;
 
@@ -96,24 +114,20 @@ void crsrow_copy(crsrow *v1, crsrow *v0) {
   v1->nz_al = v0->nz_al;
 
   if (!v1->idxs) {
-    void *aligned = NULL;
-    if (posix_memalign(&aligned, OCTMAT_ALIGN, sizeof(uint16_t) * v0->nz_al) != 0)
-      exit(ENOMEM);
-    v1->idxs = (uint16_t *)aligned;
+    v1->idxs = aligned_realloc(v1->idxs, sizeof(uint16_t) * v1->nz_al,
+                               sizeof(uint16_t) * v0->nz_al);
   }
 
   if (!v1->vals) {
-    void *aligned = NULL;
-    if (posix_memalign(&aligned, OCTMAT_ALIGN, v0->nz_al) != 0)
-      exit(ENOMEM);
-    v1->vals = (uint8_t *)aligned;
+    v1->vals = aligned_realloc(v1->vals, sizeof(uint8_t) * v1->nz_al,
+                               sizeof(uint8_t) * v0->nz_al);
   }
 
   memcpy(v1->idxs, v0->idxs, v0->nz_al);
   memcpy(v1->vals, v0->vals, v0->nz_al);
 }
 
-void crs_freerow(crsrow *a) {
+void crsrow_free(crsrow *a) {
   free(a->idxs);
   free(a->vals);
   a->nz = 0;
@@ -152,16 +166,25 @@ void crs_resize(crsmat *v, uint16_t r, uint16_t c) {
   v->rows = r;
 }
 
-void crs_copy(crsmat *v1, crsmat *v0) {
-}
+void crs_copy(crsmat *v1, crsmat *v0) {}
 
 void crs_destroy(crsmat *v) {
-  for(int r = 0; r < v->rows; r++) {
-    crs_freerow(&v->row[r]);
+  for (int r = 0; r < v->rows; r++) {
+    crsrow_free(&v->row[r]);
   }
   free(v->row);
 }
 
 void crs_print(FILE *stream, crsmat *m) {
+  uint8_t dense[m->cols];
+  fprintf(stream, "[%ux%u]\n", m->rows, m->cols);
+  for (int i = 0; i < m->rows; i++) {
+    memset(dense, 0, m->cols);
+    crsrow_unpack(&m->row[i], dense);
+    fprintf(stream, "|%3d", dense[0]);
+    for (int j = 1; j < m->cols; j++) {
+      fprintf(stream, ", %3d", dense[j]);
+    }
+    fprintf(stream, "  |\n");
+  }
 }
-

@@ -32,10 +32,13 @@ typedef struct {
 typedef struct {
   crsrow *row;
   uint16_t rows;
+  uint16_t cols;
 } crsmat;
 
-#define OM_INITIAL { .rows = 0, .cols = 0, .cols_al = 0, .data = 0 }
-#define CRS_INITIAL { .row = 0, .rows = 0 }
+#define OM_INITIAL                                                             \
+  { .rows = 0, .cols = 0, .cols_al = 0, .data = 0 }
+#define CRS_INITIAL                                                            \
+  { .row = 0, .rows = 0 }
 
 #define om_R(v, x) ((v).data + ((x) * (v).cols_al))
 #define om_P(v) om_R(v, 0)
